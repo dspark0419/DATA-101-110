@@ -1,0 +1,150 @@
+---
+title: "DATA 110 Works"
+author: "Daeshik Park"
+date: "6/18/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(reshape2) # melt a dataframe by setting the id to the date field for multiple plots
+library(zoo) # reformat the period to be a usable date
+library(ggrepel) # label each point
+library(highcharter) #
+```
+
+
+```{r reading "household_debt"}
+household_debt <- read_csv("household_debt.csv")
+```
+
+```{r cleaning column names}
+names(household_debt) <- tolower(names(household_debt)) # make column names lowercase 
+names(household_debt) <- gsub(" ", "_", names(household_debt)) # remove and replace all spaces between words in column names with underscores
+head(household_debt)
+```
+
+```{r creating date from period}
+household <- household_debt %>%
+  mutate(date = as.Date(as.yearqtr(period, format = "%y:Q%q"))) %>%
+  select(date, everything())
+head(household)
+```
+
+```{r multiple scatterplots of debts over years}
+household1 <- melt(household[, c(1, 3:8)], id = "date") # melt the dataframe by id=date to the date field for multiple plots
+ggplot(household1) + 
+  geom_line(aes(x = date, y = value, color = variable), lwd = 1) +
+  facet_wrap(~ variable, scale = "free") +
+  labs(x = "Year", y = "Debt (trillions of dollars)",
+       color = "Types of Debts",
+       title = "Scatterplots of Debts") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Below is the same as above
+household2 <- household %>% gather("variable", "Debt", c(3:8))
+ggplot(household2) + 
+  geom_line(aes(date, Debt, color = variable)) +
+  facet_wrap(~ variable, scale = "free")
+```
+
+<br>
+
+```{r reading "murders"}
+library("dslabs")
+data(package = "dslabs")
+data("murders")
+head(murders)
+```
+
+```{r labeling each point}
+ggplot(murders, aes(x = population/10^6, y = total)) +
+  geom_smooth(method = "lm") +
+  geom_point(aes(color = region), size = 3) +
+  geom_text_repel(aes(label =abb), nudge_x = 0.005, size = 3) +
+  #geom_label_repel(aes(label =abb), size = 3, box.padding = 0.2, nudge_y = -0.01) +
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(x = "Populations (Millions, log10 scale)",
+       y = "Total Number of Murders (log10 scale)",
+       title = "U.S. Gun Murders in 2010",
+       color = "Region") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+<br>
+
+```{r reading "nations"}
+nations <- read_csv("nations.csv") 
+nations <- nations %>%
+  mutate(gdp_tn = gdp_percap * population / 10^12)
+big4 <- nations %>% 
+  filter(iso3c == "CHN" | iso3c == "DEU" | iso3c == "JPN" | iso3c == "USA") %>%
+  arrange(year)
+```
+
+```{r highcharts}
+highchart() %>%
+  hc_add_series(data = big4, type = "line",
+                hcaes(x = year, y = gdp_tn, group = country)) %>%
+  hc_xAxis(title = list(text = "Year")) %>%
+  hc_yAxis(title = list(text = "GDP (trillions of dollars)")) %>%
+  hc_title(text = "<b>GDPs of Big 4 Countries</b>", align = "center") %>%
+  hc_legend(align = "right", verticalAlign = "top") %>%
+  #hc_plotOptions(series = list(marker = list(symbol = "circle"))) %>% # change symbols to one shape
+  hc_tooltip(shared = TRUE,
+             borderColor = "black",
+             pointFormat = "{point.country}: {point.gdp_tn:.2f}<br>") # change to one tooltip for each year with “shared = TRUE”, and round numbers to two decimal places
+```
+
+```{r grouping by year and region}
+by_region <- nations %>%
+  group_by(year, region) %>%
+  summarise(gdp_tn = sum(gdp_tn, na.rm = TRUE)) %>%
+  arrange(year, region)
+```
+
+```{r area chart which areas are plotted over one another}
+hc <- highchart() %>%
+  hc_add_series(data = by_region, type = "area",
+                      hcaes(x = year, y = gdp_tn, group = region))
+hc
+```
+
+```{r stacked area chart}
+hc %>% 
+  hc_xAxis(title = list(text = "Year")) %>%
+  hc_yAxis(title = list(text = "GDP (trillions of dollars)")) %>%
+  hc_title(text = "<b>GDPs by Regions</b>", align = "center") %>%
+  hc_plotOptions(series = list(stacking = "normal",
+                               marker = list(enabled = FALSE,
+                               states = list(hover = list(enabled = FALSE))),
+                               lineWidth = 0.5,
+                               lineColor = "white")) %>%
+  hc_legend(align = "right", verticalAlign = "bottom", layout = "vertical")
+```
+
+```{r multiple highcharts}
+highchart() %>%
+  hc_yAxis_multiples(list(title = list(text = "Debt (trillions of dollars)"))#,
+                     #list(title = list(text ="Mortgage (trillions of dollars)"), 
+                          #opposite = TRUE)
+                     ) %>%
+  hc_add_series(data = household$total,
+                type = "column",
+                name = "Total Debt (trillions of dollars)") %>%
+  hc_add_series(data = household$mortgage,
+                type = "line",
+                name = "Mortgage (trillions of dollars)") %>%
+  hc_add_series(data = household$credit_card,
+                type = "line",
+                name = "Credit Card (trillions of dollars)") %>%
+  hc_xAxis(categories = household$date, tickInterval = 4) %>%
+  hc_tooltip(shared = TRUE)
+```
+
+
+
+
+### *The END*
