@@ -1,0 +1,414 @@
+---
+title: "Final Project"
+author: "Daeshik Park"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(cowplot)
+library(highcharter)
+library(plotly)
+library(ggthemes)
+library(gganimate)
+library(av) # play button in animation
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(fig.height = 4.5, fig.width = 8.5, dpi = 100, fig.align = "center")
+```
+
+<br>
+
+## Reading the data
+
+The dataset was obtained from https://www.kaggle.com/jessemostipak/college-tuition-diversity-and-pay?select=tuition_cost.csv 
+
+```{r read the data}
+college_costs <- read_csv("Tuition and fees by college university for 2018-2019.csv")
+glimpse(college_costs)
+```
+
+## Cleaning the data
+
+Check if there are any unnecessary values for character columns.
+
+```{r read levels}
+levels(factor(college_costs$state))
+levels(factor(college_costs$state_code))
+levels(factor(college_costs$type))
+levels(factor(college_costs$degree_length))
+```
+
+There are 55 levels in state_code. Remove the territories of USA to deal with only 50 states and DC and change the value "Other" in the variables type and degree_length.
+
+```{r remove territories of USA}
+college_costs <- college_costs %>%
+  filter(!state_code %in% c("AS", "GU", "PR", "VI"))
+```
+
+```{r look for Other}
+college_costs %>%
+  filter(type == "Other" | degree_length == "Other")
+```
+
+After searching the university above, it is a 4 year public college. So, change the information about the university.
+
+```{r change info}
+college_costs <- college_costs %>%
+  mutate(type = replace(type, type == "Other", "Public"),
+         degree_length = replace(degree_length, degree_length == "Other", "4 Year"))
+```
+
+Convert the classes of the character variables into factors and convert costs in thousands for the numerical variables.
+
+```{r convert into factors and costs in thousands}
+college_costs <- college_costs %>%
+  mutate_at(vars(state, state_code, type, degree_length), ~as.factor(.)) %>%
+  mutate_at(vars(room_and_board, in_state_tuition, in_state_total, out_of_state_tuition, out_of_state_total), funs(./ 10^3))
+str(college_costs)
+```
+
+## Getting the statistical summary and outliers of the data
+
+```{r}
+summary(college_costs)
+```
+
+Check if there are outliers for the variables in_state_total and out_of_state_total.
+
+```{r outliers}
+boxplot(college_costs$in_state_total, plot = FALSE)$out
+boxplot(college_costs$out_of_state_total, plot = FALSE)$out
+```
+
+Now, check if there are outliers for the variables in_state_total and out_of_state_total with respect to the variables type and degree_length. 
+
+```{r}
+g1 <- ggplot(college_costs, aes(type, in_state_total)) +
+  geom_boxplot() +
+  labs(title = "In-state Costs",
+       x = "Type", 
+       y = "Total In-state Costs (thousand dollars)") +
+  theme_solarized() +
+  facet_wrap( ~ degree_length, ncol = 1)
+g2 <- ggplot(college_costs, aes(type, out_of_state_total)) +
+  geom_boxplot() +
+  labs(title = "Out-of-state Costs",
+       x = "Type", 
+       y = "Total Out-of-state Costs (thousand dollars)") +
+  theme_solarized() +
+  facet_wrap(~ degree_length, ncol = 1)
+plot_grid(g1, g2, ncol = 2, align = "h")
+```
+
+## Comparing the averages of the variables in_state_total and out_of_state_total for each state
+
+Regroup the data by state_code and then compute the average costs for each state.
+
+```{r mean by states}
+by_state <- college_costs %>%
+  group_by(state_code)
+mean_state <- summarise(by_state,
+          mean_in = round(mean(in_state_total), 3),
+          mean_out = round(mean(out_of_state_total), 3))
+```
+
+Visualize the average out-of-state costs in an ascending order filled with the average in-state costs. 
+
+```{r average out-of-state costs}
+ggplot(mean_state) +
+  geom_bar(aes(x = reorder(state_code, mean_out), y = mean_out, fill = mean_in), 
+           stat = "identity") +
+  labs(title = "Average Out-of-state Costs (thousand dollars)",
+       subtitle = "All Colleges",
+       x = "State", 
+       y = "Average Out-of-sate Costs",
+       fill = "In-state") +
+  scale_fill_gradient(low="lightblue", high="blue") +
+  scale_y_continuous(breaks = seq(0, 60, 10)) +
+  theme(axis.text.x = element_text(size = 6, angle = 70, hjust = 1))
+```
+
+Visualize the average costs for each state using highcharts.
+
+```{r highcharts for averages by states}
+highchart() %>%
+  hc_add_series(data = mean_state$mean_out,
+                type = "column",
+                name = "Average Out-of-sate Costs",
+                color = "green") %>%
+  hc_add_series(data = mean_state$mean_in,
+                type = "line",
+                name = "Average In-state Costs",
+                color = "blue") %>%
+  hc_add_series(data = mean_state$mean_out - mean_state$mean_in,
+                type = "line",
+                name = "Difference between Out and In",
+                color = "black") %>%
+  hc_title(text = "<b> Average Costs (Tuition and Fees) for Colleges </b>",
+           align = "center") %>%
+  hc_subtitle(text = "2018 ~ 2019", align = "center") %>%
+  hc_xAxis(title = list(text = "<b> State </b>"),
+           categories = mean_state$state_code,
+           tickInterval = 1) %>%
+  hc_yAxis(title = list(text = "<b> Average Costs (thousand dollars) </b>")) %>%
+  hc_legend(align = "right", verticalAlign = "top") %>%
+  hc_tooltip(shared = TRUE)
+```
+
+## Comparing the averages of the variables in_state_total and out_of_state_total in a various way and then putting them together
+
+First, visualize the average of the variable out_of_state_total for each state and then fill with the average of the variable in_state_total using blue colors. The scale is from  lighter blues to darker blues.
+
+```{r mean_out by states filled in by mean_in}
+p1 <- ggplot(mean_state) +
+  geom_bar(aes(x = state_code, y = mean_out, fill = mean_in), 
+           stat = "identity", show.legend = FALSE) +
+  labs(title = "Average Out-of-state Costs (thousands)",
+       subtitle = "All Colleges",
+       x = "State", 
+       y = "Avg Out-of-sate Costs") +
+  scale_fill_gradient(low="lightblue", high="blue") +
+  scale_y_continuous(breaks = seq(0, 60, 10)) +
+  theme(axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5))
+```
+
+Second, visualize the average of the variable out_of_state_total for 4 year colleges in each state and then fill with the average of the variable in_state_total using blue colors. The scale is from  lighter blues to darker blues.
+
+```{r mean_out for 4 year colleges by states filled in by mean_in}
+by_state_4year <- college_costs %>%
+  filter(degree_length == "4 Year") %>%
+  group_by(state_code)
+mean_state_4year <- summarise(by_state_4year,
+          mean_in_4year = round(mean(in_state_total), 3),
+          mean_out_4year = round(mean(out_of_state_total), 3))
+
+p2 <- ggplot(mean_state_4year) +
+  geom_bar(aes(x = state_code, y = mean_out_4year, fill = mean_in_4year), 
+           stat = "identity", show.legend = FALSE) +
+  labs(title = "Average Out-of-state Costs (thousands)",
+       subtitle = "4 Year Colleges",
+       x = "State", 
+       y = "Avg Out-of-sate Costs") +
+  scale_fill_gradient(low="lightblue", high="blue") +
+  scale_y_continuous(breaks = seq(0, 60, 10)) +
+  theme(axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5))
+```
+
+Third, visualize the average of the variable out_of_state_total for private colleges in each state and then fill with the average of the variable in_state_total using blue colors. The scale is from  lighter blues to darker blues.
+
+```{r mean_out for private colleges by states filled in by mean_in}
+by_state_priv <- college_costs %>%
+  filter(type == "Private") %>%
+  group_by(state_code)
+mean_state_priv <- summarise(by_state_priv,
+          mean_in_priv = round(mean(in_state_total), 3),
+          mean_out_priv = round(mean(out_of_state_total), 3))
+
+p3 <- ggplot(mean_state_priv) +
+  geom_bar(aes(x = state_code, y = mean_out_priv, fill = mean_in_priv), 
+           stat = "identity", show.legend = FALSE) +
+  labs(title = "Average Out-of-state Costs (thousands)",
+       subtitle = "Private Colleges",
+       x = "State", 
+       y = "Avg Out-of-sate Costs") +
+  scale_fill_gradient(low="lightblue", high="blue") +
+  scale_y_continuous(breaks = seq(0, 60, 10)) +
+  theme(axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5))
+```
+
+Lastly, visualize the average of the variable out_of_state_total for 4 year private colleges in each state and then fill with the average of the variable in_state_total using blue colors. The scale is from  lighter blues to darker blues.
+
+```{r mean_out for 4 year private colleges by states filled in by mean_in}
+by_state_4priv <- college_costs %>%
+  filter(degree_length == "4 Year" & type == "Private") %>%
+  group_by(state_code)
+mean_state_4priv <- summarise(by_state_4priv,
+          mean_in_4priv = round(mean(in_state_total), 3),
+          mean_out_4priv = round(mean(out_of_state_total), 3))
+
+p4 <- ggplot(mean_state_4priv) +
+  geom_bar(aes(x = state_code, y = mean_out_4priv, fill = mean_in_4priv), 
+           stat = "identity", show.legend = FALSE) +
+  labs(title = "Average Out-of-state Costs (thousands)",
+       subtitle = "4 Year Private Colleges",
+       x = "State", 
+       y = "Avg Out-of-sate Costs") +
+  scale_fill_gradient(low="lightblue", high="blue") +
+  scale_y_continuous(breaks = seq(0, 60, 10)) +
+  theme(axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5))
+```
+
+Now, arrange the 4 plots above to compare. Note that the plots are filled with the average of the variable in_state_total using blue colors. **The scale is from lighter blues to darker blues for larger mean in-state costs.** Legends are removed to have bigger plots.
+
+```{r arrange multiple plots together, fig.height=7, fig.width=9}
+plot_grid(p1, p2, p3, p4, ncol = 2, labels = "AUTO", align = "h")
+```
+
+## Comparing the averages of the variables in_state_total and out_of_state_total for all colleges with respect ot the variables type and degree_length
+
+```{r averages by type and degree}
+by_type_degree <- college_costs %>%
+  group_by(type, degree_length) 
+mean_type_degree <- by_type_degree %>%
+  summarise(mean_in_type_degree = round(mean(in_state_total), 3),
+            mean_out_type_degree = round(mean(out_of_state_total), 3))
+
+g3 <- ggplot(mean_type_degree, aes(type, mean_in_type_degree)) +
+  geom_bar(aes(fill = type), stat = "identity", show.legend = FALSE) +
+  labs(title = "Average In-state Costs (thousands)",
+       x = "Type", 
+       y = "Average In-sate Costs") +
+  theme_solarized() +
+  facet_wrap( ~ degree_length, nrow = 2)
+g4 <- ggplot(mean_type_degree, aes(type, mean_out_type_degree)) +
+  geom_bar(aes(fill = type), stat = "identity", show.legend = FALSE) +
+  labs(title = "Average Out-of-state Costs (thousands)",
+       x = "Type", 
+       y = "Average Out-of-sate Costs") +
+  theme_solarized() +
+  facet_wrap( ~ degree_length, nrow = 2)
+plot_grid(g3, g4, ncol = 2, align = "h", labels = c("E", "F"))
+```
+
+## Focusing on the averages of the variable out_of_state_total for 4 year colleges
+
+Regroup the 4 year colleges by state_code and type and then compute the average costs. Visualize the average costs over states with respect to type and then animate the plot. If you move your mouse over the plot, the play button will be appeared.
+
+```{r faceted bars and animation}
+mean_state_4type <- college_costs %>%
+  filter(degree_length == "4 Year") %>%
+  group_by(state_code, type) %>%
+  summarise(mean_in_state_4type = round(mean(in_state_total), 3),
+            mean_out_state_4type = round(mean(out_of_state_total), 3))
+
+pp1 <- ggplot(mean_state_4type, aes(x = state_code, y = mean_out_state_4type)) +
+  geom_bar(aes(fill = type), stat = "identity", show.legend = FALSE) +
+  scale_fill_manual(values = c("salmon", "blue", "red")) +
+  labs(title = "Average Out-of-state Costs (thousand dollars) for 4 Year Colleges",
+       x = "State", 
+       y = "Average Out-of-sate Costs") +
+  theme_solarized() +
+  theme(axis.text.x = element_text(size = 7, angle = 70, hjust = 1)) +
+  facet_wrap(~ type, ncol = 1)
+
+pp2 <- pp1 +
+  transition_states(state_code, transition_length = 2, state_length = 1) +
+  labs(subtitle = "State: {closest_state}") +
+  shadow_mark()
+
+animate(pp2 + enter_fade() + exit_fly(y_loc = 1), renderer = av_renderer(), fps=4)
+```
+
+Compute the averages of 4 year colleges with respect to type.
+
+```{r averages by type}
+mean_4type <- college_costs %>%
+  filter(degree_length == "4 Year") %>%
+  group_by(type) %>%
+  summarise(mean_in_4type = round(mean(in_state_total), 3),
+            mean_out_4type = round(mean(out_of_state_total), 3))
+
+mean_4type
+```
+
+Import an image for average college costs over the years 2000~2020 from the article [1].
+
+```{r image for average college costs, out.width = '70%'}
+knitr::include_graphics("average tuition growth.png")
+```
+
+## Focusing on the colleges in Maryland, Pennsylvania, and Virginia
+
+Find the numbers of schools in Maryland, Pennsylvania, and Virginia
+
+```{r number of colleges}
+MD_PA_VA <- college_costs %>%
+  filter(state_code == "MD" | state_code == "PA" | state_code == "VA")
+by_type_degree <- MD_PA_VA %>%
+  group_by(state_code, type, degree_length)
+by_type_degree %>%
+  summarise(count = n())
+```
+
+Visually, compare the average costs of attending schools in these states.
+
+```{r average costs}
+gg1 <- ggplot(MD_PA_VA) +
+  geom_boxplot(aes(x = in_state_total, 
+                   y = reorder(state_code, in_state_total), fill = state_code),
+               show.legend = FALSE) +
+  labs(title = "Average In-state Costs (thousands)",
+       x = "Average In-state Costs", 
+       y = "State") +
+  theme_solarized()
+gg2 <- ggplot(MD_PA_VA) +
+  geom_boxplot(aes(x = out_of_state_total, 
+                   y = reorder(state_code, out_of_state_total), fill = state_code),
+               show.legend = FALSE) +
+  labs(title = "Average Out-of-state Costs (thousands)",
+       x = "Average Out-of-sate Costs", 
+       y = "State") +
+  theme_solarized()
+plot_grid(gg1, gg2, ncol = 2, labels = c("G", "H"), align = "h")
+```
+
+Compare the average costs of attending schools in MD, PA, and VA with respect to type.
+
+```{r in-state averages by type}
+mean_3type <- MD_PA_VA %>%
+  group_by(state_code, type) %>%
+  summarise(mean_in_3type = round(mean(in_state_total), 3))
+gg3 <- ggplot(mean_3type, aes(state_code, mean_in_3type)) +
+  geom_bar(aes(fill = state_code), stat = "identity", show.legend = FALSE) +
+  labs(title = "Average In-state Costs (thousands)",
+       subtitle = "4-year Colleges",
+       x = "State", 
+       y = "Average In-sate Costs") +
+  theme_solarized() +
+  facet_wrap( ~ type)
+```
+
+```{r out-of-state averages by type}
+mean_3type_4year <- MD_PA_VA %>%
+  filter(degree_length == "4 Year") %>%
+  group_by(state_code, type) %>%
+  summarise(mean_in_3type_4year = round(mean(in_state_total), 3))
+gg4 <- ggplot(mean_3type_4year, aes(state_code, mean_in_3type_4year)) +
+  geom_bar(aes(fill = state_code), stat = "identity", show.legend = FALSE) +
+  labs(title = "Average Out-of-state Costs (thousands)",
+       subtitle = "4-year Colleges",
+       x = "State", 
+       y = "Average Out-of-sate Costs") +
+  theme_solarized() +
+  facet_wrap( ~ type)
+```
+
+```{r in- and out-of-state averages by type}
+plot_grid(gg3, gg4, ncol = 2, labels = c("I", "J"), align = "h")
+```
+
+<br>
+
+## **Essay**
+
+My son is going to a college this fall. When searching and visiting colleges, Maryland has very few 4-year colleges or universities compared to Pennsylvania and Virginia. Tuition and fees were a big part of selecting colleges to apply. That is why I was interested in college tuition and fees and have chosen this dataset. 
+
+The dataset “Tuition and fees by college university for 2018-2019.csv” was obtained from the site https://www.kaggle.com/jessemostipak/college-tuition-diversity-and-pay?select=tuition_cost.csv The site says that the data originally came from the US Department of Education and the poster has filtered it down to a few tables as seen in the dataset. The dataset has 10 columns and 2973 rows. The columns are name (college names), state, state_code, type (For Profit, Other, Private, Public), degree_length (2 Year, 4 Year, Other), room_and_board, in_state_tuition, in_state_total (in_state_tuition plus room_and_board), out_of_state_tuition, out_of_state_total (out_of_state_tuition plus room_and_board). There were 55 state codes, so I removed the territories of USA to deal with only 50 state codes and DC.  There was one “Other” in each of the variables type and degree_length. I filtered the data to find the universities with the character values “Other”. They were from the same university, so I changed the values "Other" by appropriate information after searching the university. I converted the classes of the character variables (except name) into factors and converted costs into thousand dollars for the numerical variables.
+
+The average in-state total cost for all colleges is \$23115 and the average out-of-state total cost is \$27211. The difference is about \$5000. But the difference will be more than $10000 for 4-year public colleges. There are no outliers for the variables in_state_total and out_of_state_total. But the two variables have outliers for 2-year colleges regardless of type and 4-year public colleges after regrouping the variables by type and degree length.
+There is a clear correlation between the averages of the two variables and the top 9 highest averages in the two variables are located in the northeast of the country.
+
+According to Plots A, B, C and D, the averages of the two variables for 4-year colleges, private colleges, and 4-year private colleges have a similar trend and are approximately related to the average of all colleges. Plots E and F show that there is no difference between the two variables for for-profit or private colleges, but for public colleges the average out-of-state costs are \$5000 and \$12000 more than the average in-state costs for 2-year and 4-year colleges, respectively.
+
+The data shows that the average in-state cost and the average out-of-state cost for 4-year public colleges are \$18815 and \$30513, respectively and the average cost for 4-year private colleges is \$40300. The chart “Average Tuition Growth among National Universities 2000-2020” from the article [1] says that the corresponding costs are \$12000, \$27000, and \$42000. In this article [1], the chart shows 20 years of tuition changes, as reported to U.S. News by the 381 ranked National Universities included in the recently released 2020 Best Colleges rankings. There are differences between the two analyses. I do not know why, but their resources are different. Anyway, the chart from the article [1] indicates that the average cost of tuition and fees for private and public National Universities has risen significantly since the late 1990s for both in-state and out-of-state students. The article [2] says that in the last 10 years, costs were increased by roughly 25.3% at private colleges and about 29.8% at public colleges. But, from the 2008 school year to the 2018 school year, 41 states spent less per student, after adjusting for inflation. During that time period, states spent an average of 13% less per student - about $1220. The article [3] says that from 1989-90 to 2019-20, average tuition and fees tripled at public four-year and more than doubled at public two-year and private four-year institutions, after adjusting for inflation. From 1988 to 2018, families with incomes in the bottom 20% saw their incomes rise 12%, compared to income increases of 51% for families in the top 20%.
+
+Now, let’s focus on the three states MD, PA, and VA. I was looking for 4-year private colleges for my kid because costs attending private colleges after financial aids are a little more than those in 4-year public out-of-state colleges. Look at the numbers of 4-year private colleges in three states: MD=16, PA=84, and VA=29. MD has very few colleges compared to PA and VA regardless of type or degree length. The boxplots G and H were arranged in an ascending mean order. Within the IQR, MD has the most various college costs and PA has the least variability in college costs. Relatively, PA is the most expensive state to attend a college and VA is the least expensive state to attend a college. As I was interested in 4-year private colleges, Plots I and J imply that MD is the most expensive state to attend a 4-year private college and VA is the least expensive state to attend a 4-year private college.
+
+**References:**  
+[1] https://www.usnews.com/education/best-colleges/paying-for-college/articles/2017-09-20/see-20-years-of-tuition-growth-at-national-universities  
+[2] https://www.cnbc.com/2019/12/13/cost-of-college-increased-by-more-than-25percent-in-the-last-10-years.html  
+[3] https://research.collegeboard.org/trends/college-pricing/highlights
+ 
+<br>
+
+## *The END*

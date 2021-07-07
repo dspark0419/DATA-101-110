@@ -1,0 +1,314 @@
+---
+title: "Homework: Web Scraping"
+author: "Daeshik Park"
+output: html_document
+---
+
+<br>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align="center")
+library(rvest)
+library(tidyverse)
+```
+
+### Defining the desired website to be scraped and reading its HTML code
+
+```{r defining the website and reading its html}
+url <- "https://www.imdb.com/search/title/?count=100&release_date=2016,2016&title_type=feature"
+webpage <- read_html(url)
+```
+
+We’ll be scraping the following data from this website.
+
+**Rank:** numeric, the rank of the film from 1 to 100 on the list of 100 most popular feature films released in 2016  
+**Title:** character, the title of the feature film  
+**Description:** character, the description of the feature film  
+**Runtime:** numeric, the duration of the feature film  
+**Genre:** factor, the genre of the feature film. In case of multiple genres, take only the first  
+**Rating:** numeric, the IMDb rating of the feature film  
+**Metascore:** numeric, the metascore on IMDb website for the feature film  
+**Votes:** numeric, votes cast in favor of the feature film  
+**Gross_Earning_in_Mil:** numeric, the gross earnings of the feature film in millions  
+**Director:** factor, the main director of the feature film. In case of multiple directors, take only the first  
+**Actor:** factor, the main actor in the feature film. In case of multiple actors, take only the first  
+
+<br>
+
+### Scraping the Rank
+
+Use the selector gadget to get the specific CSS selector that encloses the rankings. Copy the corresponding CSS selector in the bottom center and paste it in the R code below to get all the rankings.
+
+```{r scraping rankings}
+# using CSS selector to scrape the rankings section
+rank_data_html <- html_nodes(webpage, ".text-primary")
+# converting the ranking data to text
+rank_data <- html_text(rank_data_html)
+head(rank_data)
+```
+
+Convert the class of rankings to numeric.
+
+```{r converting rankings to numeric}
+rank_data<-as.numeric(rank_data)
+head(rank_data)
+```
+
+### Scraping the Title
+
+```{r scraping titles}
+title_data_html <- html_nodes(webpage, ".lister-item-header a")
+title_data <- html_text(title_data_html)
+head(title_data)
+```
+
+### Scraping the Description
+
+```{r scraping descriptions}
+description_data_html <- html_nodes(webpage, ".ratings-bar+ .text-muted")
+description_data <- html_text(description_data_html)
+head(description_data)
+```
+
+Remove backslashes, n and extra spaces.
+
+```{r removing \n and extra space}
+description_data<-gsub("\n    ", "", description_data)
+head(description_data)
+```
+
+### Scraping the Runtime
+
+```{r scraping runtimes}
+runtime_data_html <- html_nodes(webpage, ".runtime")
+runtime_data <- html_text(runtime_data_html)
+head(runtime_data)
+```
+
+Remove mins.
+
+```{r removing space+min}
+runtime_data<-gsub(" min", "", runtime_data)
+runtime_data<-as.numeric(runtime_data)
+head(runtime_data)
+```
+
+### Scraping the Genre
+
+```{r scraping genres}
+genre_data_html <- html_nodes(webpage, ".genre")
+genre_data <- html_text(genre_data_html)
+head(genre_data)
+```
+
+Remove backslashes, n, and trailing spaces and take only the first genre of each movie.
+
+```{r removing \n and trailing space}
+genre_data<-gsub("\n", "", genre_data)
+genre_data<-gsub(" ", "", genre_data)
+genre_data<-gsub(",.*", "", genre_data) # taking only the first genre of each movie
+genre_data <- as.factor(genre_data)
+head(genre_data)
+```
+
+### Scraping the Rating
+
+```{r scraping ratings}
+rating_data_html <- html_nodes(webpage, ".ratings-imdb-rating strong")
+rating_data <- html_text(rating_data_html)
+head(rating_data)
+```
+
+```{r converting ratings to numeric}
+rating_data <- as.numeric(rating_data)
+head(rating_data)
+```
+
+### Scraping the Votes
+
+```{r scraping votes}
+votes_data_html <- html_nodes(webpage, ".sort-num_votes-visible span:nth-child(2)")
+votes_data <- html_text(votes_data_html)
+head(votes_data)
+```
+
+Remove commas.
+
+```{r removing commas}
+votes_data<-gsub(",", "", votes_data)
+votes_data <- as.numeric(votes_data)
+head(votes_data)
+```
+
+### Scraping the Director
+
+```{r scraping directors}
+directors_data_html <- html_nodes(webpage, ".text-muted+ p a:nth-child(1)")
+directors_data <- html_text(directors_data_html)
+head(directors_data)
+```
+
+```{r taking only the first director}
+directors_data<-gsub(",.*", "", directors_data) # taking only the first director
+directors_data <- as.factor(directors_data)
+head(directors_data)
+```
+
+### Scraping the Actor
+
+```{r scraping actors}
+actors_data_html <- html_nodes(webpage, ".lister-item-content .ghost+ a")
+actors_data <- html_text(actors_data_html)
+head(actors_data)
+```
+
+```{r taking only the first actor}
+actors_data<-gsub(",.*", "", actors_data) # taking only the first actor
+actors_data <- as.factor(actors_data)
+head(actors_data)
+```
+
+### Scraping the Metascore
+
+```{r scraping metascores}
+metascore_data_html <- html_nodes(webpage, ".metascore")
+metascore_data <- html_text(metascore_data_html)
+head(metascore_data)
+```
+
+```{r removing extra space}
+metascore_data<-gsub(" ", "", metascore_data)
+head(metascore_data)
+length(metascore_data)
+```
+
+Since we are dealing with 100 movies, there are 2 movies that don’t have the corresponding Metascore fields. We simply add NAs to those two entries using a for loop. After a visual inspection, find that the Metascore is missing for movies 22 and 80.
+
+```{r adding NAs to missing metascores}
+for (i in c(22, 80)) {
+a<-metascore_data[1:(i-1)]
+b<-metascore_data[i:length(metascore_data)]
+metascore_data<-append(a,list("NA"))
+metascore_data<-append(metascore_data,b) }
+```
+
+```{r converting metascore to numeric}
+metascore_data<-as.numeric(metascore_data)
+length(metascore_data)
+summary(metascore_data)
+```
+
+### Scraping the Gross Earning
+
+```{r scraping gross earnings}
+gross_data_html <- html_nodes(webpage, ".ghost~ .text-muted+ span")
+gross_data <- html_text(gross_data_html)
+head(gross_data)
+```
+
+Remove $ and M.
+
+```{r removing $ and M}
+gross_data <- gsub("\\$", "", gross_data)
+gross_data <-gsub("M", "", gross_data)
+gross_data <- as.numeric(gross_data)
+head(gross_data)
+length(gross_data)
+```
+
+Since we are dealing with 100 movies, there are 11 movies that don’t have the corresponding gross earning fields. We simply add NAs to those entries. After a visual inspection, find that the Gross Earning is missing for movies 22, 48, 52, 63, 72, 84, 91, 93, 94 and 100.
+
+```{r adding NAs to missing gross earnings}
+for (i in c(22, 48, 52, 63, 72, 84, 91, 93, 94)) {
+a<-gross_data[1:(i-1)]
+b<-gross_data[i:length(gross_data)]
+gross_data <- append(a,list("NA"))
+gross_data <- append(gross_data,b) }
+
+gross_data <- c(gross_data, "NA") # adding "NA" to the 100th place
+```
+
+```{r converting gross to numeric}
+gross_data <- as.numeric(gross_data)
+length(gross_data)
+summary(gross_data)
+```
+
+<br>
+
+### Combining all the data into a dataframe
+
+Now we have successfully scraped all the 11 features for the 100 most popular feature films released in 2016. Let’s combine them to create a dataframe and inspect its basic structure.
+
+```{r combining all the data into a dataframe}
+top_movies <- data.frame(Rank = rank_data, Title = title_data,
+                         Description = description_data, Runtime = runtime_data,
+                         Genre = genre_data, Rating = rating_data,
+                         Metascore = metascore_data, Votes = votes_data,
+                         Gross_Earning_in_Mil = gross_data,
+                         Director = directors_data, Actor = actors_data)
+glimpse(top_movies)
+```
+
+### Analyzing scraped data from the web
+
+```{r histogram of Runtime by Genre}
+ggplot(top_movies) + 
+  geom_histogram(aes(Runtime, fill = Genre), bins = 30) +
+  scale_x_continuous(breaks = seq(80, 170, 10)) +
+  labs(x = "Runtime (min)", y = "Frequency",
+       title = "Histogram of Runtime Stacked up by Genre") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+**Question 1:** Based on the above data, which movie from which Genre had the longest runtime? *Its genre is a drama that has runtime between 162.5 and 165 minutes. Let's identify the movie with its runtime.*
+
+```{r longest runtime}
+ind_max_runtime <- which.max(top_movies$Runtime)
+top_movies$Runtime[ind_max_runtime]
+top_movies$Title[ind_max_runtime]
+top_movies$Genre[ind_max_runtime]
+```
+
+```{r scatterplot of Runtime and Rating by Genre and Votes}
+ggplot(top_movies) +
+  geom_point(aes(Runtime, Rating, color = Genre, size = Votes)) +
+  scale_x_continuous(breaks = seq(80, 170, 10)) +
+  labs(x = "Runtime (min)", y = "Rating",
+       title = "Scatterplot of Runtime vs Rating") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+**Question 2:** Based on the above data, in the Runtime of 130-160 mins, which genre has the highest votes? *Action*. Let's check.
+
+```{r highest votes}
+movies_run_130_160 <- top_movies %>%
+  filter(Runtime >= 130 & Runtime <= 160)
+ind_max_votes <- which.max(movies_run_130_160$Votes)
+movies_run_130_160$Votes[ind_max_votes]
+movies_run_130_160$Title[ind_max_votes]
+movies_run_130_160$Genre[ind_max_votes]
+```
+
+```{r scatterplot of Runtime and Gross_Earning_in_Mil by Genre and Rating}
+ggplot(top_movies) +
+  geom_point(aes(Runtime, Gross_Earning_in_Mil, color = Genre, size = Rating)) +
+  scale_x_continuous(breaks = seq(80, 170, 10)) +
+  labs(x = "Runtime (min)", y = "Gross Earning (millions)",
+       title = "Scatterplot of Runtime vs Gross Earning") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+**Question 3:** Based on the above data, across all genres which genre has the highest average gross earnings in runtime 100 to 120? *Adventure*. Let's check.
+
+```{r highest gross earnings}
+movies_run_100_120 <- top_movies %>%
+  filter(Runtime >= 100 & Runtime <= 120)
+ind_max_gross <- which.max(movies_run_100_120$Gross_Earning_in_Mil)
+movies_run_100_120$Gross_Earning_in_Mil[ind_max_gross]
+movies_run_100_120$Title[ind_max_gross]
+movies_run_100_120$Genre[ind_max_gross]
+```
+
+### *The End*
+

@@ -1,0 +1,126 @@
+---
+title: "Midterm Project"
+author: "Daeshik Park"
+output: html_document
+---
+
+<br>
+
+I will investigate the data temp_carbon obtained from the data package dslabs. The data temp_carbon has 5 columns: year, temp_anomaly, land_anomaly, ocean_anomaly, and carbon_emissions. The anomalies are deviations from the baseline the 20th century average. According to NOAA, the 20th century average temperature of the global land and ocean surface is 14.8°C (58.6°F) and the 20th century average temperature of the global land-only surface is 11.1°C (52.0°F). Temperature anomalies are in degrees Celsius and carbon emissions are in millions of metric tons.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(fig.height = 5, fig.width = 8, dpi = 100, fig.align = "center")
+library(tidyverse)
+library(highcharter)
+library(gganimate)
+library(viridis)
+```
+
+Read the data temp_carbon.
+
+```{r reading "temp_carbon"}
+library("dslabs")
+#data(package = "dslabs")
+data("temp_carbon")
+glimpse(temp_carbon)
+summary(temp_carbon)
+```
+
+After looking at the data, there are no data values for anomalies from the years 1751 ~ 1879. Remove those years from the data.
+
+```{r filtering data}
+temp_carbon_1880 <- temp_carbon %>% filter(year >= 1880)
+summary(temp_carbon_1880)
+```
+
+<br>
+
+### Comparing Anomalies
+
+Visualize the 3 anomaly variables in a plot to compare using highcharts.
+
+```{r multiple highcharts}
+highchart() %>%
+  hc_add_series(data = temp_carbon_1880$temp_anomaly,
+                type = "column",
+                name = "Global Temp Anomaly",
+                color = "gray") %>% # bars for temp_anomaly
+  hc_add_series(data = temp_carbon_1880$land_anomaly,
+                type = "line",
+                name = "Land Temp Anomaly",
+                color = "green") %>% # lines for land_anomaly
+  hc_add_series(data = temp_carbon_1880$ocean_anomaly,
+                type = "line",
+                name = "Ocean Temp Anomaly",
+                color = "blue") %>% # lines for ocean_anomaly
+  hc_title(text = "<b> Annual Temperature Anomalies </b>",
+           align = "center") %>%
+  hc_subtitle(text = "Baseline: 20th Century Mean Temperatures",
+              align = "center") %>%
+  hc_xAxis(title = list(text = "<b> Year </b>"),
+           categories = temp_carbon_1880$year, 
+           tickInterval = 10) %>%
+  hc_yAxis(title = list(text = "<b> Temperature Anomaly (degrees Celsius) </b>")) %>%
+  hc_legend(align = "right", verticalAlign = "top") %>%
+  hc_tooltip(shared = TRUE)
+```
+
+**Summary:** During the world war II, there are positive deviations because they made extreme number of weapons of mass destruction. Since 1975, anomalies are positive and in an increasing trend. Industries were developed rapidly, and land anomalies became the main factor of global temperature anomalies.
+
+<br>
+
+### Animating the Variables temp_anomaly and carbon_emissions
+
+Convert the variable year as an integer class and investigate covariate relation between the Variables temp_anomaly and carbon_emissions.
+
+```{r animation over time, fig.align="center"}
+temp_carbon_1880$year <- as.integer(temp_carbon_1880$year)
+
+# static plot
+gg1 <- ggplot(temp_carbon_1880, aes(temp_anomaly, carbon_emissions)) +
+  geom_point(aes(color = land_anomaly, size = ocean_anomaly)) +
+  labs(title = "Trends of Carbon Emissions over Temperature Anomaly",
+       x = "Global Temperature Anomaly (degrees Celsius)",
+       y = "Carbon Emissions (millions tons)",
+       color = "Land Anomaly",
+       size = "Ocean Anomaly") +
+  scale_color_viridis_c()
+
+# transition of states
+gg2 <- gg1 + 
+  transition_time(year) +
+  labs(subtitle = "Year: {frame_time}") +
+  shadow_mark(color = "black", alpha = 1, size = 0.5)
+
+# changing themes
+gg3 <- gg2 +
+  theme(plot.title = element_text(size = 13, face = "bold", hjust = 0.5),
+        plot.subtitle = element_text(size = 11, face = "bold", 
+                                     color = "darkblue", hjust = 0.5),
+        plot.background = element_rect("lightblue"),
+        plot.margin = unit(c(0.5,1,0.5,1), "cm"),
+        axis.text.x = element_text(size = 7),
+        axis.text.y = element_text(size = 7),
+        axis.title.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        legend.title = element_text(color = "blue", size = 8),
+        legend.text = element_text(color = "red", size = 7),
+        legend.background = element_rect("lightgreen"))
+
+animate(gg3, fps=3.5) # transition speed
+```
+
+**Summary:** Until mid-1940s, global temperature anomalies are negative, and the amounts of carbon emissions are stayed below. Since then, the amounts of carbon emissions keep increasing and most of the global temperature anomalies are positive. During the last 20 years (the 21st century), it looks to me that there are record highs in the two variables almost every year.  So, I may project that we will have record highs in the two variables this year (but, there is a counter-factor, COVID-19). Overall, it seems that there is a positive correlation between the variables temp_anomaly and carbon_emissions.
+
+<br>
+
+### A visualization about the data from YouTube
+
+To view the video, click "Open in Browser" on the top-left and then click the image.
+
+[![Temp Anomaly](http://img.youtube.com/vi/Z4bSxb5THm4/0.jpg)](https://www.youtube.com/watch?v=Z4bSxb5THm4 "Temp Anomaly")
+
+<br>
+  
+### *The END*

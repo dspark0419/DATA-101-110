@@ -1,0 +1,96 @@
+---
+title: 'HW: GIS Lab with 2016 New Hampshire Democratic Primary Results'
+author: "Daeshik Park"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(rio)
+library(sf) # read a shape file
+library(tmap)
+library(tmaptools)
+```
+
+## Reading the dataset
+
+```{r}
+nhdata <- rio::import("NHD2016.xlsx")
+glimpse(nhdata)
+```
+
+## Choosing the data for only two main candidates
+
+```{r}
+nhdata <- nhdata[, c("County", "Clinton", "Sanders")]
+glimpse(nhdata)
+```
+
+## Adding columns for percents and margins of votes
+
+```{r}
+nhdata <- nhdata %>%
+  mutate(SandersMarginVotes = Sanders - Clinton,
+         SandersPct = SandersMarginVotes / (Sanders + Clinton),
+         ClintonPct = (Clinton - Sanders) / (Sanders + Clinton),
+         SandersMarginPctgPoints = SandersPct - ClintonPct)
+glimpse(nhdata)
+```
+
+## Reading the shape file for the geographic data
+
+```{r}
+usgeo <- st_read("cb_2014_us_county_5m.shp")
+str(usgeo)
+```
+
+## Extracting and mapping New Hampshire geographic data using FIPS code 33
+
+```{r}
+nhgeo <- filter(usgeo, STATEFP=="33")
+qtm(nhgeo)
+```
+
+## Sorting both data sets by county name and checking if the two county columns are identical
+
+```{r}
+nhgeo <- nhgeo[order(nhgeo$NAME),]
+nhdata <- nhdata[order(nhdata$County),]
+identical(nhgeo$NAME, nhdata$County)
+```
+
+## Joining the two data sets
+
+```{r}
+nhmap <- merge(nhgeo, nhdata, by.x = "NAME", by.y = "County")
+str(nhmap)
+```
+
+## Creating a simple static map of Sanders' margins by county in number of votes and mapping margins by percentage
+
+```{r}
+qtm(nhmap, fill = "SandersMarginVotes")
+qtm(nhmap, "SandersMarginPctgPoints")
+```
+
+## Changing themes
+
+```{r}
+tm_shape(nhmap) +
+  tm_fill("SandersMarginVotes", title="Sanders Margin, Total Votes", palette = "PRGn") +
+  tm_borders(alpha=.5) +
+  tm_text("NAME", size=0.8)
+```
+
+## Changing the color theme and the background color
+
+```{r}
+tm_shape(nhmap) +
+  tm_fill("SandersMarginVotes", title="Sanders Margin, Total Votes", palette = "PRGn") +
+  tm_borders(alpha=.5) +
+  tm_text("NAME", size=0.8) +
+  tm_style("classic", bg.color = "lightblue")
+```
+
+## *The END*
